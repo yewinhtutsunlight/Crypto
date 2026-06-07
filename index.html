@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BTC/USD · Market Intelligence Terminal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#070a0b; --panel:#0f1416; --panel2:#131a1d; --line:#1e2a2e;
+    --ink:#e8f0ee; --mut:#7d8c8a; --amber:#f7931a; --amber-d:#a35f08;
+    --green:#19e09b; --red:#ff5159; --blue:#4cc2ff;
+    --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --disp:'Anton',Impact,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--ink); font-family:var(--mono);
+    font-size:14px; line-height:1.45; min-height:100vh;
+    background-image:
+      linear-gradient(rgba(247,147,26,.025) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(247,147,26,.025) 1px,transparent 1px);
+    background-size:46px 46px;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:18px 16px 70px}
+  .topbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+    border:1px solid var(--line);background:linear-gradient(180deg,#101718,#0c1112);
+    padding:12px 16px;border-radius:4px}
+  .brand{font-family:var(--disp);font-size:22px;letter-spacing:1px;line-height:1;text-transform:uppercase}
+  .brand .b{color:var(--amber)}
+  .tag{font-size:10px;color:var(--mut);letter-spacing:3px;text-transform:uppercase;margin-top:3px}
+  .live{display:flex;align-items:center;gap:7px;margin-left:auto;font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:1px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--green);animation:pulse 1.8s infinite}
+  .dot.off{background:var(--red);animation:none}
+  .dot.load{background:var(--amber);animation:pulse 1.2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(25,224,155,.55)}70%{box-shadow:0 0 0 7px rgba(25,224,155,0)}100%{box-shadow:0 0 0 0 rgba(25,224,155,0)}}
+  .btn{font-family:var(--mono);font-weight:700;font-size:11px;letter-spacing:1px;text-transform:uppercase;
+    background:var(--amber);color:#150d00;border:none;padding:9px 14px;border-radius:3px;cursor:pointer;transition:.15s}
+  .btn:hover{filter:brightness(1.12)} .btn:disabled{opacity:.5;cursor:wait}
+  .btn.ghost{background:transparent;color:var(--amber);border:1px solid var(--amber-d)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+  .span2{grid-column:1/-1}
+  @media(max-width:820px){.grid{grid-template-columns:1fr}.span2{grid-column:auto}}
+  .panel{border:1px solid var(--line);background:var(--panel);border-radius:4px;padding:16px;position:relative;overflow:hidden}
+  .panel h2{font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:var(--mut);font-weight:700;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
+  .panel h2 .pin{color:var(--amber)}
+  .hero{display:flex;align-items:flex-end;gap:18px;flex-wrap:wrap}
+  .price{font-family:var(--disp);font-size:60px;line-height:.9}
+  .price .cur{font-size:24px;color:var(--mut);vertical-align:top;margin-right:4px}
+  .deltas{display:flex;gap:20px;padding-bottom:8px;flex-wrap:wrap}
+  .delta .lab{font-size:9px;letter-spacing:2px;color:var(--mut);text-transform:uppercase}
+  .delta .val{font-size:18px;font-weight:800}
+  .up{color:var(--green)} .down{color:var(--red)}
+  .chartbox{margin-top:16px;border-top:1px solid var(--line);padding-top:12px}
+  canvas{width:100%;height:150px;display:block}
+  .chartmeta{display:flex;justify-content:space-between;font-size:10px;color:var(--mut);letter-spacing:1px;margin-top:6px}
+  .callbadge{font-family:var(--disp);font-size:40px;letter-spacing:1px;line-height:1;text-transform:uppercase}
+  .callsub{font-size:11px;color:var(--mut);letter-spacing:1px;margin-top:4px}
+  .probbar{display:flex;height:42px;border-radius:4px;overflow:hidden;margin:16px 0 6px;border:1px solid var(--line)}
+  .probseg{display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;transition:width .8s cubic-bezier(.5,0,.1,1);white-space:nowrap;min-width:0}
+  .seg-bear{background:linear-gradient(90deg,#3a1418,#ff5159);color:#fff}
+  .seg-bull{background:linear-gradient(90deg,#19e09b,#0b3a2a);color:#04140d}
+  .problegend{display:flex;justify-content:space-between;font-size:10px;color:var(--mut);letter-spacing:1px;text-transform:uppercase}
+  .targets{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  @media(max-width:560px){.targets{grid-template-columns:1fr}}
+  .tcard{border:1px solid var(--line);border-radius:4px;padding:12px;background:var(--panel2)}
+  .tcard .th{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px;font-weight:700}
+  .tcard .rng{font-size:18px;font-weight:800;letter-spacing:-.5px}
+  .tcard .trig{font-size:10px;color:var(--mut);margin-top:8px;line-height:1.4}
+  .tcard.bear{border-left:3px solid var(--red)} .tcard.bear .th{color:var(--red)}
+  .tcard.base{border-left:3px solid var(--amber)} .tcard.base .th{color:var(--amber)}
+  .tcard.bull{border-left:3px solid var(--green)} .tcard.bull .th{color:var(--green)}
+  .ind{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px dashed var(--line);font-size:12px}
+  .ind:last-child{border-bottom:none}
+  .ind .name{color:var(--mut);letter-spacing:.5px}
+  .ind .v{font-weight:700}
+  .chip{font-size:9px;font-weight:800;letter-spacing:1px;text-transform:uppercase;padding:2px 7px;border-radius:3px;margin-left:8px}
+  .chip.bear{background:rgba(255,81,89,.15);color:var(--red)}
+  .chip.bull{background:rgba(25,224,155,.15);color:var(--green)}
+  .chip.neu{background:rgba(125,140,138,.18);color:var(--mut)}
+  .ladder{font-size:12px}
+  .lvl{display:flex;justify-content:space-between;padding:6px 9px;border-radius:3px;margin-bottom:4px}
+  .lvl.res{background:rgba(255,81,89,.07)} .lvl.sup{background:rgba(25,224,155,.07)}
+  .lvl.now{background:var(--amber);color:#150d00;font-weight:800}
+  .lvl .t{letter-spacing:1px;font-size:9px;text-transform:uppercase;opacity:.8}
+  .factors{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media(max-width:560px){.factors{grid-template-columns:1fr}}
+  .fcard{border:1px solid var(--line);border-radius:4px;padding:11px 12px;background:var(--panel2)}
+  .fcard .fh{font-size:11px;font-weight:800;letter-spacing:.5px;margin-bottom:5px;display:flex;align-items:center;gap:7px}
+  .fcard .fb{font-size:11px;color:var(--mut);line-height:1.5}
+  .pol{font-size:8px;font-weight:800;padding:2px 6px;border-radius:3px;letter-spacing:1px}
+  .pol.b{background:rgba(255,81,89,.18);color:var(--red)}
+  .pol.g{background:rgba(25,224,155,.18);color:var(--green)}
+  .livecat{border:1px dashed var(--amber-d);border-radius:4px;padding:10px 12px;margin-bottom:12px;font-size:11px;line-height:1.6}
+  .livecat b{color:var(--amber);letter-spacing:1px}
+  .summary{font-size:12px;line-height:1.6;border-left:2px solid var(--amber);padding-left:12px;margin-top:6px;color:var(--ink)}
+  .spinner{display:inline-block;width:11px;height:11px;border:2px solid var(--amber);border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .disc{margin-top:18px;font-size:10px;color:var(--mut);line-height:1.6;border-top:1px solid var(--line);padding-top:14px}
+  .err{color:var(--red);font-size:11px;margin-top:8px;line-height:1.5}
+  .skel{color:var(--mut);font-family:var(--disp);font-size:60px;line-height:.9}
+  .loadmsg{font-size:11px;color:var(--mut);margin-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <div>
+      <div class="brand"><span class="b">&#8383;</span> BTC/USD Intelligence Terminal</div>
+      <div class="tag">Live market survey &middot; directional forecast model</div>
+    </div>
+    <div class="live"><span class="dot off" id="statusDot"></span><span id="statusTxt">idle</span></div>
+    <button class="btn ghost" id="refreshBtn" onclick="boot()">&#8635; Refresh</button>
+  </div>
+
+  <div class="grid">
+    <div class="panel span2">
+      <h2>Live Price <span class="pin" id="srcTag">web&middot;search</span></h2>
+      <div class="hero">
+        <div class="price" id="priceEl"><span class="skel">&mdash;&mdash;&mdash;&mdash;</span></div>
+        <div class="deltas">
+          <div class="delta"><div class="lab">24h</div><div class="val" id="d24">&mdash;</div></div>
+          <div class="delta"><div class="lab">7d</div><div class="val" id="d7">&mdash;</div></div>
+        </div>
+      </div>
+      <div class="loadmsg" id="loadMsg"><span class="spinner"></span>Pulling live market data via web search&hellip; (takes ~10&ndash;20s)</div>
+      <div class="chartbox" style="display:none" id="chartBox">
+        <canvas id="chart"></canvas>
+        <div class="chartmeta"><span>recent daily closes</span><span id="cmRight">&mdash;</span></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Directional Probability <span class="pin">model</span></h2>
+      <div class="callbadge" id="callBadge">&mdash;</div>
+      <div class="callsub" id="callSub">awaiting live inputs&hellip;</div>
+      <div class="probbar" id="probBar">
+        <div class="probseg seg-bear" id="segBear" style="width:50%">&mdash;</div>
+        <div class="probseg seg-bull" id="segBull" style="width:50%">&mdash;</div>
+      </div>
+      <div class="problegend"><span>&#128062; Bearish / flat-down</span><span>Bullish / recovery &#128002;</span></div>
+    </div>
+
+    <div class="panel">
+      <h2>Signal Breakdown <span class="pin">technical</span></h2>
+      <div id="indList"><div class="ind"><span class="name">awaiting data&hellip;</span></div></div>
+    </div>
+
+    <div class="panel span2">
+      <h2>Price Prediction &middot; This Week <span class="pin">anchored to live price</span></h2>
+      <div class="targets" id="targets">
+        <div class="tcard bear"><div class="th">&#128062; Bear Path</div><div class="rng">&mdash;</div></div>
+        <div class="tcard base"><div class="th">&#9670; Likely Close</div><div class="rng">&mdash;</div></div>
+        <div class="tcard bull"><div class="th">&#128002; Bull Path</div><div class="rng">&mdash;</div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Key Levels Ladder <span class="pin">support / resistance</span></h2>
+      <div class="ladder" id="ladder">&mdash;</div>
+    </div>
+
+    <div class="panel">
+      <h2>Sentiment <span class="pin">fear &amp; greed</span></h2>
+      <div id="fgWrap" style="text-align:center;padding:6px 0">
+        <div style="font-family:var(--disp);font-size:54px;line-height:1" id="fgVal">&mdash;</div>
+        <div style="font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase" id="fgLabel">&mdash;</div>
+        <div style="height:10px;border-radius:6px;margin:14px 0 6px;background:linear-gradient(90deg,#ff5159,#f7931a,#19e09b);position:relative">
+          <div id="fgMark" style="position:absolute;top:-4px;width:4px;height:18px;background:#fff;border-radius:2px;left:50%;transition:left .8s"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--mut);letter-spacing:1px"><span>EXTREME FEAR</span><span>EXTREME GREED</span></div>
+      </div>
+    </div>
+
+    <div class="panel span2">
+      <h2>Driving Factors &amp; Causes <span class="pin">live + regime</span></h2>
+      <div class="livecat" id="liveCat"><b>LIVE CATALYSTS</b> &mdash; run a refresh to pull the latest from the web.</div>
+      <div class="summary" id="aiSummary" style="display:none"></div>
+      <div class="factors" style="margin-top:12px">
+        <div class="fcard"><div class="fh">ETF Flows <span class="pol b">BEARISH</span></div><div class="fb">Record single-week US spot-ETF outflows force authorized participants to sell real BTC into the market &mdash; mechanical, discretion-free selling pressure.</div></div>
+        <div class="fcard"><div class="fh">Fed / Rates <span class="pol b">BEARISH</span></div><div class="fb">Hawkish shift &mdash; rate-cut timing pushed out, rising Treasury yields pull capital away from risk assets like crypto.</div></div>
+        <div class="fcard"><div class="fh">Strategy (MSTR) <span class="pol b">BEARISH</span></div><div class="fb">First BTC sale in years cracked the "never sell" narrative of a flagship institutional holder &mdash; a symbolic sentiment blow.</div></div>
+        <div class="fcard"><div class="fh">Leverage / Liquidations <span class="pol b">BEARISH</span></div><div class="fb">Heavy long liquidations: breaking support triggers margin-call cascades that accelerate the move down.</div></div>
+        <div class="fcard"><div class="fh">Macro Rotation <span class="pol b">BEARISH</span></div><div class="fb">Capital rotating into AI names &amp; big IPOs; geopolitics favouring gold/treasuries over BTC as a safe haven.</div></div>
+        <div class="fcard"><div class="fh">Oversold Positioning <span class="pol g">BULLISH</span></div><div class="fb">Extreme Fear + RSI near historic-bottom zones. Outflow streaks have sometimes marked local bottoms &rarr; sharp bounce risk.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="disc">
+    DATA PATH: live figures are fetched through the in-app AI web-search channel (the only network path permitted inside this sandboxed page &mdash; direct calls to exchange APIs are blocked, which is why a previous version showed no data on mobile). Web-sourced prices may lag the exchange tape by minutes. The probability model is a transparent rules-based blend of trend (50/200-DMA), momentum (RSI-14, 24h/7d), sentiment, and a documented structural-flow regime tilt &mdash; NOT a guarantee. One-week crypto forecasting is inherently noisy. This is an analytical tool, not financial advice.
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const fmt=n=>'$'+Math.round(n).toLocaleString('en-US');
+const fmtK=n=>'$'+(n/1000).toFixed(1)+'k';
+const roundTo=(n,s)=>Math.round(n/s)*s;
+let HIST=[];
+
+function rsiClass(r){if(r==null)return['n/a','neu'];if(r<30)return['oversold '+r.toFixed(0),'bull'];if(r<45)return['weak '+r.toFixed(0),'bear'];if(r<=55)return['neutral '+r.toFixed(0),'neu'];if(r<=70)return['firm '+r.toFixed(0),'bull'];return['overbought '+r.toFixed(0),'bear'];}
+
+function runModel(d){
+  const price=Number(d.price);
+  const ch24=Number(d.ch24)||0, ch7=Number(d.ch7)||0;
+  let bias=0; const signals=[];
+  bias-=12; signals.push(['Structural flow regime','ETF outflows','bear']);
+  if(typeof d.above_50dma==='boolean'){bias+=d.above_50dma?12:-14;signals.push(['Price vs 50-DMA',d.above_50dma?'above':'below',d.above_50dma?'bull':'bear']);}
+  if(typeof d.golden_cross==='boolean'){bias+=d.golden_cross?9:-11;signals.push(['50/200-DMA',d.golden_cross?'golden cross':'death cross',d.golden_cross?'bull':'bear']);}
+  const r=(d.rsi14!=null&&!isNaN(d.rsi14))?Number(d.rsi14):null;
+  if(r!=null){if(r<30)bias+=11;else if(r<45)bias-=8;else if(r<=55)bias+=0;else if(r<=70)bias+=8;else bias-=6;const rc=rsiClass(r);signals.push(['RSI-14',rc[0],rc[1]]);}
+  bias+=Math.max(-20,Math.min(20,ch7*0.85)); signals.push(['7-day momentum',(ch7>=0?'+':'')+ch7.toFixed(1)+'%',ch7>=0?'bull':'bear']);
+  bias+=Math.max(-12,Math.min(12,ch24*1.2)); signals.push(['24h momentum',(ch24>=0?'+':'')+ch24.toFixed(1)+'%',ch24>=0?'bull':'bear']);
+  let fg=null;
+  if(d.fear_greed!=null&&!isNaN(d.fear_greed)){fg={v:Number(d.fear_greed),t:d.fg_label||''};let fc=(fg.v-50)*0.18;if(fg.v<15)fc+=5;bias+=fc;signals.push(['Fear & Greed',fg.v+' '+fg.t,fg.v<25?(fg.v<15?'bull':'bear'):(fg.v>55?'bull':'neu')]);}
+  let bull=Math.round(50+bias*0.5); bull=Math.max(15,Math.min(85,bull));
+  const closes=(d.recent_closes||[]).map(Number).filter(x=>x>0);
+  const rLow=closes.length?Math.min(...closes):price*0.9;
+  const rHigh=closes.length?Math.max(...closes):price*1.1;
+  return {price,bull,bear:100-bull,signals,fg,closes,
+    targets:{bear:[roundTo(price*0.92,500),roundTo(Math.min(rLow,price*0.88),500)],
+             bull:[roundTo(price*1.06,500),roundTo(Math.max(rHigh,price*1.11),500)],
+             base:[roundTo(price*0.96,500),roundTo(price*1.025,500)]}};
+}
+
+function dcls(p){return p==='bull'?'bull':p==='bear'?'bear':'neu';}
+
+function render(d,m){
+  $('loadMsg').style.display='none';
+  $('priceEl').innerHTML='<span class="cur">$</span>'+Math.round(m.price).toLocaleString('en-US');
+  const set=(id,v)=>{const e=$(id);v=Number(v)||0;e.textContent=(v>=0?'+':'')+v.toFixed(2)+'%';e.className='val '+(v>=0?'up':'down');};
+  set('d24',d.ch24); set('d7',d.ch7);
+  const dom=m.bear>=m.bull?'bear':'bull';
+  $('callBadge').textContent=dom==='bear'?'\uD83D\uDC3B BEAR':'\uD83D\uDC02 BULL';
+  $('callBadge').style.color=dom==='bear'?'var(--red)':'var(--green)';
+  const edge=Math.abs(m.bull-m.bear);
+  $('callSub').textContent='Dominant by '+edge+' pts \u00B7 '+(edge>=20?'strong':edge>=8?'moderate':'slight')+' edge';
+  $('segBear').style.width=m.bear+'%'; $('segBear').textContent=m.bear+'% BEAR';
+  $('segBull').style.width=m.bull+'%'; $('segBull').textContent=m.bull+'% BULL';
+  $('indList').innerHTML=m.signals.map(s=>'<div class="ind"><span class="name">'+s[0]+'</span><span class="v">'+s[1]+'<span class="chip '+dcls(s[2])+'">'+s[2]+'</span></span></div>').join('');
+  const t=m.targets;
+  $('targets').innerHTML=
+    '<div class="tcard bear"><div class="th">\uD83D\uDC3B Bear Path</div><div class="rng">'+fmtK(t.bear[1])+' \u2013 '+fmtK(t.bear[0])+'</div><div class="trig">If support breaks on a daily close \u2192 liquidation leg lower.</div></div>'+
+    '<div class="tcard base"><div class="th">\u25C6 Likely Weekly Close</div><div class="rng">'+fmtK(t.base[0])+' \u2013 '+fmtK(t.base[1])+'</div><div class="trig">Down-first chop; the pivot is whether support holds on a daily-close basis.</div></div>'+
+    '<div class="tcard bull"><div class="th">\uD83D\uDC02 Bull Path</div><div class="rng">'+fmtK(t.bull[0])+' \u2013 '+fmtK(t.bull[1])+'</div><div class="trig">Needs ETF flows to flip green or soft US data to squeeze higher.</div></div>';
+  const psych=[50000,53000,57000,60000,64000,68000,73800,80000];
+  const lv=[...psych,Math.round(m.price)].sort((a,b)=>b-a);
+  $('ladder').innerHTML=lv.map(x=>{
+    if(Math.abs(x-Math.round(m.price))<1)return '<div class="lvl now"><span class="t">spot</span><span>'+fmt(m.price)+'</span></div>';
+    const role=x>m.price?'res':'sup';
+    return '<div class="lvl '+role+'"><span class="t">'+(role==='res'?'resistance':'support')+'</span><span>'+fmt(x)+'</span></div>';
+  }).join('');
+  if(m.fg){$('fgVal').textContent=m.fg.v;$('fgLabel').textContent=m.fg.t;
+    $('fgVal').style.color=m.fg.v<25?'var(--red)':m.fg.v>55?'var(--green)':'var(--amber)';
+    $('fgMark').style.left=m.fg.v+'%';}
+  else{$('fgVal').textContent='\u2014';$('fgLabel').textContent='unavailable';}
+  if(d.catalysts&&d.catalysts.length){$('liveCat').innerHTML='<b>LIVE CATALYSTS</b><br>\u2022 '+d.catalysts.join('<br>\u2022 ');}
+  if(d.summary){$('aiSummary').style.display='block';$('aiSummary').textContent=d.summary;}
+  if(d.as_of){$('cmRight').textContent='as of '+d.as_of;}
+  if(m.closes.length>=3){$('chartBox').style.display='block';drawChart(m.closes);}
+}
+
+function drawChart(data){
+  const c=$('chart'),dpr=window.devicePixelRatio||1;
+  const w=c.clientWidth,h=150;
+  c.width=w*dpr;c.height=h*dpr;
+  const x=c.getContext('2d');x.scale(dpr,dpr);
+  const mn=Math.min(...data),mx=Math.max(...data),pad=8;
+  const px=i=>pad+i*(w-2*pad)/(data.length-1);
+  const py=v=>h-pad-(v-mn)/(mx-mn||1)*(h-2*pad);
+  x.strokeStyle='rgba(255,255,255,.04)';x.lineWidth=1;
+  for(let i=0;i<=4;i++){const yy=pad+i*(h-2*pad)/4;x.beginPath();x.moveTo(0,yy);x.lineTo(w,yy);x.stroke();}
+  const up=data[data.length-1]>=data[0];
+  const col=up?'#19e09b':'#ff5159';
+  const grd=x.createLinearGradient(0,0,0,h);
+  grd.addColorStop(0,up?'rgba(25,224,155,.28)':'rgba(255,81,89,.28)');
+  grd.addColorStop(1,'rgba(0,0,0,0)');
+  x.beginPath();x.moveTo(px(0),py(data[0]));data.forEach((v,i)=>x.lineTo(px(i),py(v)));
+  x.lineTo(px(data.length-1),h);x.lineTo(px(0),h);x.closePath();x.fillStyle=grd;x.fill();
+  x.beginPath();x.moveTo(px(0),py(data[0]));data.forEach((v,i)=>x.lineTo(px(i),py(v)));
+  x.strokeStyle=col;x.lineWidth=2;x.stroke();
+  const lx=px(data.length-1),ly=py(data[data.length-1]);
+  x.beginPath();x.arc(lx,ly,3.5,0,7);x.fillStyle=col;x.fill();
+}
+
+/* ---- technical helpers (for direct-feed path) ---- */
+function sma(a,n){if(a.length<n)return null;return a.slice(-n).reduce((x,y)=>x+y,0)/n;}
+function rsiCalc(a,n){if(a.length<n+1)return null;let g=0,l=0;for(let i=a.length-n;i<a.length;i++){const c=a[i]-a[i-1];if(c>=0)g+=c;else l-=c;}if(l===0)return 100;const rs=(g/n)/(l/n);return 100-100/(1+rs);}
+function withTimeout(p,ms){return Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),ms))]);}
+
+/* ---- PATH A: direct public exchange APIs (works in a normal browser tab) ---- */
+async function loadDirect(){
+  let spot,closes;
+  try{
+    const r=await withTimeout(fetch('https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT'),5000);
+    if(!r.ok)throw 0; const d=await r.json();
+    spot={price:+d.lastPrice,ch24:+d.priceChangePercent};
+  }catch(e){
+    const r=await withTimeout(fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true'),6000);
+    if(!r.ok)throw new Error('spot'); const d=await r.json();
+    spot={price:d.bitcoin.usd,ch24:d.bitcoin.usd_24h_change};
+  }
+  try{
+    const r=await withTimeout(fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=200'),6000);
+    if(!r.ok)throw 0; const d=await r.json(); closes=d.map(k=>+k[4]);
+  }catch(e){
+    const r=await withTimeout(fetch('https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=200&interval=daily'),7000);
+    if(!r.ok)throw new Error('hist'); const d=await r.json(); closes=d.prices.map(p=>p[1]);
+  }
+  let fg=null;
+  try{const r=await withTimeout(fetch('https://api.alternative.me/fng/?limit=1'),5000);const d=await r.json();fg={v:+d.data[0].value,t:d.data[0].value_classification};}catch(e){}
+  const s50=sma(closes,50),s200=sma(closes,200),r14=rsiCalc(closes,14);
+  const ch7=closes.length>=8?(spot.price/closes[closes.length-8]-1)*100:0;
+  return {price:spot.price,ch24:spot.ch24,ch7,rsi14:r14,
+    above_50dma:s50!=null?spot.price>s50:undefined,
+    golden_cross:(s50!=null&&s200!=null)?s50>s200:undefined,
+    fear_greed:fg?fg.v:null,fg_label:fg?fg.t:'',
+    recent_closes:closes.slice(-12),catalysts:null,summary:null,
+    as_of:new Date().toLocaleString(),feed:'DIRECT'};
+}
+
+/* ---- PATH B: in-app AI web-search channel (works inside Claude's renderer) ---- */
+async function loadAI(){
+  const prompt='You are a market-data fetcher. Search the web RIGHT NOW for the very latest Bitcoin (BTC/USD) figures and respond ONLY with valid minified JSON (no markdown, no prose, no backticks) in EXACTLY this schema:\n{"price":<number USD>,"ch24":<24h percent change number>,"ch7":<7d percent change number>,"rsi14":<daily RSI-14 number or null>,"above_50dma":<true|false>,"golden_cross":<true if 50DMA above 200DMA else false>,"fear_greed":<Crypto Fear & Greed Index 0-100 int or null>,"fg_label":"<classification>","recent_closes":[<~10 most recent daily closing prices, oldest first>],"catalysts":["<short live driver>","<short>","<short>"],"summary":"<2 sentence one-week read>","as_of":"<date of the data>"}\nPercent changes are numbers like -3.5 (no % sign). Output JSON only.';
+  const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:prompt}],tools:[{type:"web_search_20250305",name:"web_search"}]})});
+  if(!res.ok)throw new Error('api '+res.status);
+  const data=await res.json();
+  const text=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n');
+  const a=text.indexOf('{'),b=text.lastIndexOf('}');
+  if(a<0||b<0)throw new Error('no json');
+  const d=JSON.parse(text.slice(a,b+1)); d.feed='AI-SEARCH';
+  if(!d.price||isNaN(d.price))throw new Error('no price'); return d;
+}
+
+async function boot(){
+  $('refreshBtn').disabled=true;
+  $('statusDot').className='dot load';$('statusTxt').textContent='fetching\u2026';
+  $('loadMsg').style.display='block';
+  let d=null, how='';
+  try{ d=await loadDirect(); how='direct exchange feed'; }
+  catch(e1){
+    $('loadMsg').innerHTML='<span class="spinner"></span>Direct feed blocked here \u2014 falling back to AI web-search (~10\u201320s)\u2026';
+    try{ d=await loadAI(); how='AI web-search'; }catch(e2){ console.error('direct:',e1,'ai:',e2); }
+  }
+  if(d){
+    HIST=(d.recent_closes||[]).map(Number);
+    render(d,runModel(d));
+    $('srcTag').textContent=(d.feed==='DIRECT'?'live\u00B7exchange':'web\u00B7search');
+    $('statusDot').className='dot';$('statusTxt').textContent='live \u00B7 '+how+' \u00B7 '+new Date().toLocaleTimeString();
+  }else{
+    $('statusDot').className='dot off';$('statusTxt').textContent='error';
+    $('loadMsg').style.display='none';
+    $('priceEl').innerHTML='<span class="err">Both data paths failed in this view. Press F12 \u2192 Console and send me the red error line, or tell me the exact URL you opened and I can load it in a controlled tab to read the console.</span>';
+  }
+  $('refreshBtn').disabled=false;
+}
+
+window.addEventListener('resize',()=>{if(HIST.length>=3)drawChart(HIST.map(Number));});
+boot();
+</script>
+</body>
+</html>
