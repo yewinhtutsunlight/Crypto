@@ -237,6 +237,32 @@ canvas{width:100%;height:150px;display:block}
 .skel{color:var(--mut);font-family:var(--disp);font-size:60px;line-height:.9}
 .err{color:var(--red);font-size:11px;margin-top:8px;line-height:1.5}
 .disc{margin-top:18px;font-size:10px;color:var(--mut);line-height:1.6;border-top:1px solid var(--line);padding-top:14px}
+
+/* ══════════════════════════════════════════════
+   YESTERDAY vs TODAY
+══════════════════════════════════════════════ */
+.day-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+@media(max-width:560px){.day-grid{grid-template-columns:1fr}}
+.day-card{border:1px solid var(--line);border-radius:4px;padding:13px;background:var(--panel2)}
+.day-card.yday{border-left:3px solid var(--mut)}
+.day-card.tday{border-left:3px solid var(--amber)}
+.day-card .dh{font-size:10px;letter-spacing:2px;text-transform:uppercase;font-weight:700;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.ohlc-wrap{display:grid;grid-template-columns:1fr 1fr;gap:5px 18px}
+.ohlc-row .ol{font-size:9px;letter-spacing:1.5px;color:var(--mut);text-transform:uppercase;margin-bottom:2px}
+.ohlc-row .ov{font-size:14px;font-weight:700;letter-spacing:-.3px}
+.day-foot{display:flex;gap:16px;margin-top:10px;padding-top:8px;border-top:1px dashed var(--line);flex-wrap:wrap;align-items:flex-start}
+.ds .sl{font-size:9px;letter-spacing:1px;color:var(--mut);text-transform:uppercase;margin-bottom:2px}
+.ds .sv{font-size:12px;font-weight:700}
+.analysis-pills{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:0}
+@media(max-width:720px){.analysis-pills{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:420px){.analysis-pills{grid-template-columns:1fr 1fr}}
+.apill{border:1px solid var(--line);border-radius:4px;padding:10px 12px;background:var(--panel2);text-align:center}
+.apill .al{font-size:9px;letter-spacing:1.5px;color:var(--mut);text-transform:uppercase;margin-bottom:4px}
+.apill .av{font-size:18px;font-weight:800;line-height:1.1}
+.apill .as{font-size:10px;color:var(--mut);margin-top:3px;line-height:1.3}
+.range-bar{height:6px;border-radius:3px;background:var(--line);margin-top:8px;position:relative;overflow:hidden}
+.range-fill{height:100%;border-radius:3px;transition:width .8s cubic-bezier(.3,0,.1,1)}
+.range-dot{position:absolute;top:-2px;width:10px;height:10px;border-radius:50%;background:var(--amber);margin-left:-5px;transition:left .8s cubic-bezier(.3,0,.1,1);border:2px solid var(--panel2)}
 </style>
 </head>
 <body>
@@ -288,6 +314,17 @@ canvas{width:100%;height:150px;display:block}
           <span>recent daily closes</span>
           <span id="cmRight">&mdash;</span>
         </div>
+      </div>
+    </div>
+
+    <!-- ════ YESTERDAY vs TODAY ════ -->
+    <div class="panel span2" id="dayAnalysisPanel" style="display:none">
+      <h2>Yesterday vs Today <span class="pin">OHLCV analysis</span></h2>
+      <div class="day-grid" id="dayCards">
+        <!-- populated by renderDayAnalysis() -->
+      </div>
+      <div class="analysis-pills" id="analysisPills">
+        <!-- populated by renderDayAnalysis() -->
       </div>
     </div>
 
@@ -450,6 +487,19 @@ function rsiClass(r){
   if(r<=70)return['firm '+r.toFixed(0),'bull'];
   return['overbought '+r.toFixed(0),'bear'];
 }
+function atrCalc(klines,n){
+  if(!klines||klines.length<n+1)return null;
+  const trs=[];
+  for(let i=1;i<klines.length;i++){
+    const tr=Math.max(
+      klines[i].h-klines[i].l,
+      Math.abs(klines[i].h-klines[i-1].c),
+      Math.abs(klines[i].l-klines[i-1].c)
+    );
+    trs.push(tr);
+  }
+  return sma(trs,n);
+}
 
 /* ══════════════════════════════════════════════
    PROBABILITY MODEL
@@ -493,15 +543,41 @@ function runModel(d){
     bias+=fc;
     signals.push(['Fear & Greed',fg.v+' '+fg.t,fg.v<25?(fg.v<15?'bull':'bear'):fg.v>55?'bull':'neu']);
   }
+  // Gap analysis signal
+  if(d.gap_pct!=null&&!isNaN(d.gap_pct)){
+    const gp=Number(d.gap_pct);
+    if(Math.abs(gp)>=0.3){
+      bias+=Math.max(-8,Math.min(8,gp*1.4));
+      signals.push(['Gap (open vs yday close)',(gp>=0?'+':'')+gp.toFixed(2)+'%',gp>=0?'bull':'bear']);
+    }
+  }
+  // Volume signal
+  if(d.vol_ratio!=null&&!isNaN(d.vol_ratio)){
+    const vr=Number(d.vol_ratio);
+    const dirMult=(ch24>=0)?1:-1;
+    if(vr>1.3){bias+=7*dirMult;signals.push(['Volume vs 20d avg',vr.toFixed(2)+'× (elevated)',ch24>=0?'bull':'bear']);}
+    else if(vr<0.6){signals.push(['Volume vs 20d avg',vr.toFixed(2)+'× (thin)','neu']);}
+    else{signals.push(['Volume vs 20d avg',vr.toFixed(2)+'×','neu']);}
+  }
+  // Day position signal
+  if(d.day_position!=null&&!isNaN(d.day_position)){
+    const dp=Number(d.day_position);
+    if(dp>0.75){bias+=6;signals.push(['Day position',Math.round(dp*100)+'% of range (high)','bull']);}
+    else if(dp<0.25){bias-=6;signals.push(['Day position',Math.round(dp*100)+'% of range (low)','bear']);}
+    else{signals.push(['Day position',Math.round(dp*100)+'% of range','neu']);}
+  }
+
   let bull=Math.round(50+bias*0.5); bull=Math.max(15,Math.min(85,bull));
   const closes=(d.recent_closes||[]).map(Number).filter(x=>x>0);
-  const rLow =closes.length?Math.min(...closes):price*0.9;
-  const rHigh=closes.length?Math.max(...closes):price*1.1;
+
+  // ATR-based targets (fallback to % if ATR unavailable)
+  const atr=d.atr14&&d.atr14>0?Number(d.atr14):price*0.04;
+  const wkATR=atr*Math.sqrt(5);
   return{price,bull,bear:100-bull,signals,fg,closes,
     targets:{
-      bear:[roundTo(price*0.92,500), roundTo(Math.min(rLow, price*0.88),500)],
-      bull:[roundTo(price*1.06,500), roundTo(Math.max(rHigh,price*1.11),500)],
-      base:[roundTo(price*0.96,500), roundTo(price*1.025,500)],
+      bear:[roundTo(price-1.5*wkATR,500), roundTo(price-2.5*wkATR,500)],
+      bull:[roundTo(price+1.2*wkATR,500), roundTo(price+2.2*wkATR,500)],
+      base:[roundTo(price-0.35*wkATR,500), roundTo(price+0.35*wkATR,500)],
     }
   };
 }
@@ -555,7 +631,108 @@ function render(d,m){
   if(d.summary){$('aiSummary').style.display='block';$('aiSummary').textContent=d.summary;}
   if(d.as_of) $('cmRight').textContent='as of '+d.as_of;
   if(m.closes.length>=3){$('chartBox').style.display='block';drawChart(m.closes);}
+  renderDayAnalysis(d);
   renderFactors(d);
+}
+
+/* ── Yesterday vs Today OHLCV Analysis ── */
+function renderDayAnalysis(d){
+  const panel=$('dayAnalysisPanel');
+  if(!d.yday||!d.tday){panel.style.display='none';return;}
+  panel.style.display='block';
+
+  const y=d.yday, t=d.tday;
+  const fmt=v=>'$'+Math.round(v).toLocaleString('en-US');
+  const fmtVol=v=>{
+    if(v>=1e9)return(v/1e9).toFixed(2)+'B';
+    if(v>=1e6)return(v/1e6).toFixed(1)+'M';
+    return Math.round(v).toLocaleString();
+  };
+  const yChg=(y.c-y.o)/y.o*100;
+  const tChg=(t.c-t.o)/t.o*100;
+  const yRange=y.h-y.l, tRange=t.h-t.l;
+
+  // OHLCV cards
+  $('dayCards').innerHTML=
+    `<div class="day-card yday">
+      <div class="dh"><span>📅 YESTERDAY</span>
+        <span style="color:${yChg>=0?'var(--green)':'var(--red)'}">${yChg>=0?'▲':'▼'}${Math.abs(yChg).toFixed(2)}%</span>
+      </div>
+      <div class="ohlc-wrap">
+        <div class="ohlc-row"><div class="ol">Open</div><div class="ov">${fmt(y.o)}</div></div>
+        <div class="ohlc-row"><div class="ol">High</div><div class="ov" style="color:var(--green)">${fmt(y.h)}</div></div>
+        <div class="ohlc-row"><div class="ol">Close</div><div class="ov">${fmt(y.c)}</div></div>
+        <div class="ohlc-row"><div class="ol">Low</div><div class="ov" style="color:var(--red)">${fmt(y.l)}</div></div>
+      </div>
+      <div class="day-foot">
+        <div class="ds"><div class="sl">Range</div><div class="sv">$${Math.round(yRange).toLocaleString()}</div></div>
+        <div class="ds"><div class="sl">Volume</div><div class="sv">${fmtVol(y.v)}</div></div>
+      </div>
+    </div>
+    <div class="day-card tday">
+      <div class="dh"><span>⚡ TODAY (live)</span>
+        <span style="color:${tChg>=0?'var(--green)':'var(--red)'}">${tChg>=0?'▲':'▼'}${Math.abs(tChg).toFixed(2)}%</span>
+      </div>
+      <div class="ohlc-wrap">
+        <div class="ohlc-row"><div class="ol">Open</div><div class="ov">${fmt(t.o)}</div></div>
+        <div class="ohlc-row"><div class="ol">High</div><div class="ov" style="color:var(--green)">${fmt(t.h)}</div></div>
+        <div class="ohlc-row"><div class="ol">Close (live)</div><div class="ov" style="color:var(--amber)">${fmt(t.c)}</div></div>
+        <div class="ohlc-row"><div class="ol">Low</div><div class="ov" style="color:var(--red)">${fmt(t.l)}</div></div>
+      </div>
+      <div class="day-foot">
+        <div class="ds"><div class="sl">Range so far</div><div class="sv">$${Math.round(tRange).toLocaleString()}</div></div>
+        <div class="ds"><div class="sl">Volume</div><div class="sv">${fmtVol(t.v)}</div></div>
+      </div>
+    </div>`;
+
+  // Analysis pills
+  const gap=d.gap_pct!=null?Number(d.gap_pct):null;
+  const atr=d.atr14&&d.atr14>0?Number(d.atr14):null;
+  const rangeConsumed=atr&&tRange>0?tRange/atr*100:null;
+  const dp=d.day_position!=null?Number(d.day_position):0.5;
+  const vr=d.vol_ratio!=null?Number(d.vol_ratio):null;
+
+  // Gap pill
+  let gapColor=gap===null?'var(--mut)':gap>=0?'var(--green)':'var(--red)';
+  let gapNote=gap===null?'—':Math.abs(gap)<0.1?'flat gap':gap>0?'gap up':'gap down';
+
+  // ATR utilisation
+  let atrPct=rangeConsumed!=null?Math.min(rangeConsumed,150):null;
+  let atrColor=atrPct===null?'var(--mut)':atrPct>100?'var(--red)':atrPct>65?'var(--amber)':'var(--green)';
+  let atrNote=atrPct===null?'—':atrPct>100?'extended':atrPct>65?'normal':'still expanding';
+
+  // Day position
+  const dpPct=Math.round(dp*100);
+  const dpColor=dp>0.75?'var(--green)':dp<0.25?'var(--red)':'var(--amber)';
+  const dpNote=dp>0.75?'upper range':dp<0.25?'lower range':'mid range';
+
+  // Volume ratio
+  const vrColor=vr===null?'var(--mut)':vr>1.3?'var(--amber)':vr<0.6?'var(--mut)':'var(--green)';
+  const vrNote=vr===null?'—':vr>1.5?'very heavy':vr>1.3?'elevated':vr<0.6?'thin':'normal';
+
+  $('analysisPills').innerHTML=
+    `<div class="apill">
+      <div class="al">Gap (open vs yday close)</div>
+      <div class="av" style="color:${gapColor}">${gap===null?'—':(gap>=0?'+':'')+gap.toFixed(2)+'%'}</div>
+      <div class="as">${gapNote}</div>
+    </div>
+    <div class="apill">
+      <div class="al">ATR-14 utilised</div>
+      <div class="av" style="color:${atrColor}">${atrPct===null?'—':Math.round(atrPct)+'%'}</div>
+      <div class="as">${atrNote}${atr?' · ATR $'+Math.round(atr).toLocaleString():''}</div>
+    </div>
+    <div class="apill">
+      <div class="al">Day position</div>
+      <div class="av" style="color:${dpColor}">${dpPct}%</div>
+      <div class="as">${dpNote}
+        <div class="range-bar"><div class="range-fill" style="width:${dpPct}%;background:${dpColor}"></div><div class="range-dot" style="left:${dpPct}%"></div></div>
+      </div>
+    </div>
+    <div class="apill">
+      <div class="al">Volume vs 20d avg</div>
+      <div class="av" style="color:${vrColor}">${vr===null?'—':vr.toFixed(2)+'×'}</div>
+      <div class="as">${vrNote}</div>
+    </div>`;
 }
 
 /* ── Dynamic key levels ── */
@@ -821,11 +998,27 @@ async function loadDirect(){
     spot={price:d.bitcoin.usd, ch24:d.bitcoin.usd_24h_change};
   }
 
-  // 200-day daily klines
+  // 200-day daily klines — full OHLCV
+  let klinesFull=[], yday=null, tday=null, atr14=null, vol_ratio=null, gap_pct=null, day_position=0.5;
   try{
-    const r=await withTimeout(fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=200'),6000);
+    const r=await withTimeout(fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=210'),6000);
     if(!r.ok) throw 0;
-    closes=(await r.json()).map(k=>+k[4]);
+    const raw=await r.json();
+    klinesFull=raw.map(k=>({o:+k[1],h:+k[2],l:+k[3],c:+k[4],v:+k[5]}));
+    closes=klinesFull.map(k=>k.c);
+    // Yesterday and today (today's candle may still be forming)
+    if(klinesFull.length>=2){
+      yday=klinesFull[klinesFull.length-2];
+      tday=klinesFull[klinesFull.length-1];
+      // Use live spot price to update today's close estimate
+      tday={...tday,c:spot.price,h:Math.max(tday.h,spot.price),l:Math.min(tday.l,spot.price)};
+      atr14=atrCalc(klinesFull,14);
+      const vols=klinesFull.slice(-22,-1).map(k=>k.v);
+      const v20=sma(vols,Math.min(20,vols.length));
+      vol_ratio=v20&&v20>0?tday.v/v20:null;
+      gap_pct=(tday.o-yday.c)/yday.c*100;
+      day_position=(tday.h-tday.l)>0?(spot.price-tday.l)/(tday.h-tday.l):0.5;
+    }
   }catch(e){
     const r=await withTimeout(fetch('https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=200&interval=daily'),7000);
     if(!r.ok) throw new Error('hist');
@@ -869,6 +1062,7 @@ async function loadDirect(){
     fear_greed:fg?fg.v:null, fg_label:fg?fg.t:'',
     funding_rate,
     recent_closes:closes.slice(-14),
+    atr14, yday, tday, vol_ratio, gap_pct, day_position,
     catalysts:null, summary:null,
     as_of:new Date().toLocaleString(),
     feed:'DIRECT',
